@@ -17,7 +17,8 @@ GAMMA = 0.99 # decay rate of past observations
 OBSERVE = 1000. # timesteps to observe before training
 EXPLORE = 2000000. # frames over which to anneal epsilon
 FINAL_EPSILON = 0.0001 # final value of epsilon
-INITIAL_EPSILON = 0.0001 # starting value of epsilon
+# INITIAL_EPSILON = 0.0001 # starting value of epsilon
+INITIAL_EPSILON = 0.001
 REPLAY_MEMORY = 50000 # number of previous transitions to remember
 BATCH_SIZE = 32 # size of minibatch
 FRAME_PER_ACTION = 1
@@ -26,10 +27,13 @@ width = 80
 height = 80
 
 def preprocess(observation):
+    # 缩放、灰度
     observation = cv2.cvtColor(cv2.resize(observation, (80, 80)), cv2.COLOR_BGR2GRAY)
+    # 二值化处理
     ret, observation = cv2.threshold(observation,1,255,cv2.THRESH_BINARY)
     return np.reshape(observation, (1,80,80))
 
+# 出一个两维数组，第一维是batch_size。第二维是动作集合大小，每个元素代表一个动作的Q值
 class DeepNetWork(nn.Module):
     def __init__(self,):
         super(DeepNetWork,self).__init__()
@@ -57,7 +61,8 @@ class DeepNetWork(nn.Module):
         x = self.conv3(x); x = x.view(x.size(0),-1)
         x = self.fc1(x); return self.out(x)
 
-class BrainDQNMain(object):
+
+class DQNMain(object):
     def save(self):
         print("save model param")
         torch.save(self.Q_net.state_dict(), 'params3.pth')
@@ -69,25 +74,29 @@ class BrainDQNMain(object):
             self.Q_netT.load_state_dict(torch.load('params3.pth'))
 
     def __init__(self,actions):
-        self.replayMemory = deque() # init some parameters
+        # 存储过去的经验，即先前的状态、动作、奖励和新状态的组合。这些经验被用于训练过程中的样本抽取，支持网络学习以前遇到的各种情形,
+        self.replayMemory = deque() 
         self.timeStep = 0
         self.epsilon = INITIAL_EPSILON
         self.actions = actions
         self.Q_net=DeepNetWork()
-        self.Q_netT=DeepNetWork();
+        self.Q_netT=DeepNetWork()
         self.load()
         self.loss_func=nn.MSELoss()
         LR=1e-6
         self.optimizer = torch.optim.Adam(self.Q_net.parameters(), lr=LR)
 
-    def train(self): # Step 1: obtain random minibatch from replay memory
+    def train(self): 
+        # Step 1: obtain random minibatch from replay memory
         minibatch = random.sample(self.replayMemory, BATCH_SIZE)
         state_batch = [data[0] for data in minibatch]
         action_batch = [data[1] for data in minibatch]
         reward_batch = [data[2] for data in minibatch]
-        nextState_batch = [data[3] for data in minibatch] # Step 2: calculate y
+        nextState_batch = [data[3] for data in minibatch] 
+        # Step 2: calculate y
         y_batch = np.zeros([BATCH_SIZE,1])
-        nextState_batch=np.array(nextState_batch) #print("train next state shape")
+        nextState_batch=np.array(nextState_batch) 
+        #print("train next state shape")
         #print(nextState_batch.shape)
         nextState_batch=torch.Tensor(nextState_batch)
         action_batch=np.array(action_batch)
@@ -123,10 +132,13 @@ class BrainDQNMain(object):
             self.Q_netT.load_state_dict(self.Q_net.state_dict())
             self.save()
 
-    def setPerception(self,nextObservation,action,reward,terminal): #print(nextObservation.shape)
-        newState = np.append(self.currentState[1:,:,:],nextObservation,axis = 0) # newState = np.append(nextObservation,self.currentState[:,:,1:],axis = 2)
+    def setPerception(self,nextObservation,action,reward,terminal): 
+        # 用于更新环境状态、记录动作和它们的结果，并根据这些信息调整学习过程
+        newState = np.append(self.currentState[1:,:,:],nextObservation,axis = 0) 
+        # newState = np.append(nextObservation,self.currentState[:,:,1:],axis = 2)
         self.replayMemory.append((self.currentState,action,reward,newState,terminal))
         if len(self.replayMemory) > REPLAY_MEMORY:
+            # 移除最老的经验
             self.replayMemory.popleft()
         if self.timeStep > OBSERVE: # Train the network
             self.train()
@@ -171,7 +183,7 @@ class BrainDQNMain(object):
 if __name__ == '__main__': 
     # Step 1: init BrainDQN
     actions = 2
-    brain = BrainDQNMain(actions) # Step 2: init Flappy Bird Game
+    brain = DQNMain(actions) # Step 2: init Flappy Bird Game
     flappyBird = game.GameState() # Step 3: play game
     # Step 3.1: obtain init state
     action0 = np.array([1,0]) # do nothing
